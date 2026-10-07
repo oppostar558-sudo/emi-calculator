@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EMI Calculator</title>
+<style>
+  :root {
+    --bg: #0f1220;
+    --card: #181c2f;
+    --card-2: #1f2540;
+    --accent: #6c8cff;
+    --accent-2: #4fd1c5;
+    --text: #eef1ff;
+    --muted: #9aa3c7;
+    --border: #2a3155;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 50% -10%, #232a52 0%, var(--bg) 60%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .wrap { width: 100%; max-width: 900px; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+  }
+  label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
+  .field { margin-bottom: 18px; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  input[type="number"] {
+    width: 100%;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 1rem;
+    outline: none;
+  }
+  input[type="number"]:focus { border-color: var(--accent); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 10px; }
+  .emi {
+    text-align: center;
+    padding: 18px 0 10px;
+  }
+  .emi .val { font-size: 2.4rem; font-weight: 800; color: var(--accent-2); letter-spacing: -1px; }
+  .emi .lbl { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; }
+  .break { margin-top: 14px; display: grid; gap: 10px; }
+  .brow { display: flex; justify-content: space-between; font-size: 0.95rem; }
+  .brow .k { color: var(--muted); }
+  .brow .v { font-weight: 600; }
+  .bar { height: 10px; border-radius: 6px; overflow: hidden; display: flex; margin: 8px 0 4px; }
+  .bar span { display: block; height: 100%; }
+  .p { background: var(--accent); }
+  .i { background: var(--accent-2); }
+  canvas { width: 100%; height: 210px; margin-top: 10px; }
+  .foot { color: var(--muted); font-size: 0.78rem; margin-top: 18px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>EMI Calculator</h1>
+  <p class="sub">Loan ki monthly EMI, total interest aur payment breakdown dekho.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="field">
+        <label>Loan amount (₹)</label>
+        <div class="row">
+          <input type="number" id="amount" value="1000000" min="1000" step="1000" />
+        </div>
+        <input type="range" id="amountR" min="10000" max="20000000" step="10000" value="1000000" />
+      </div>
+
+      <div class="field">
+        <label>Interest rate (% per year)</label>
+        <div class="row">
+          <input type="number" id="rate" value="9" min="0.1" max="30" step="0.1" />
+        </div>
+        <input type="range" id="rateR" min="1" max="24" step="0.1" value="9" />
+      </div>
+
+      <div class="field">
+        <label>Tenure (years)</label>
+        <div class="row">
+          <input type="number" id="years" value="10" min="1" max="30" step="1" />
+        </div>
+        <input type="range" id="yearsR" min="1" max="30" step="1" value="10" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="emi">
+        <div class="lbl">Monthly EMI</div>
+        <div class="val" id="emiVal">₹0</div>
+      </div>
+
+      <div class="bar">
+        <span class="p" id="barP" style="width:60%"></span>
+        <span class="i" id="barI" style="width:40%"></span>
+      </div>
+      <div class="brow" style="font-size:0.75rem">
+        <span style="color:var(--accent)">■ Principal</span>
+        <span style="color:var(--accent-2)">■ Interest</span>
+      </div>
+
+      <div class="break">
+        <div class="brow"><span class="k">Principal amount</span><span class="v" id="principalVal">₹0</span></div>
+        <div class="brow"><span class="k">Total interest</span><span class="v" id="interestVal">₹0</span></div>
+        <div class="brow"><span class="k">Total payment</span><span class="v" id="totalVal">₹0</span></div>
+      </div>
+
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+  <p class="foot">For illustration only. Actual EMI may vary with fees, insurance and bank rounding.</p>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+
+  function emi(P, annualRate, years) {
+    const r = annualRate / 12 / 100;
+    const n = years * 12;
+    if (r === 0) return P / n;
+    return (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  }
+
+  function drawChart(principal, interest) {
+    const c = $("chart");
+    const dpr = window.devicePixelRatio || 1;
+    const w = c.clientWidth, h = 210;
+    c.width = w * dpr; c.height = h * dpr;
+    const ctx = c.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const total = principal + interest;
+    const pAngle = (principal / total) * Math.PI * 2;
+    const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 8;
+
+    // principal slice
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + pAngle);
+    ctx.closePath();
+    ctx.fillStyle = "#6c8cff";
+    ctx.fill();
+
+    // interest slice
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, R, -Math.PI / 2 + pAngle, -Math.PI / 2 + Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = "#4fd1c5";
+    ctx.fill();
+
+    // donut hole
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * 0.58, 0, Math.PI * 2);
+    ctx.fillStyle = "#181c2f";
+    ctx.fill();
+
+    const pPct = Math.round((principal / total) * 100);
+    ctx.fillStyle = "#eef1ff";
+    ctx.textAlign = "center";
+    ctx.font = "700 20px system-ui";
+    ctx.fillText(pPct + "%", cx, cy - 2);
+    ctx.fillStyle = "#9aa3c7";
+    ctx.font = "500 12px system-ui";
+    ctx.fillText("principal", cx, cy + 16);
+  }
+
+  function calc() {
+    const P = Math.max(1, parseFloat($("amount").value) || 0);
+    const rate = Math.max(0, parseFloat($("rate").value) || 0);
+    const years = Math.max(1, parseFloat($("years").value) || 1);
+    const e = emi(P, rate, years);
+    const total = e * years * 12;
+    const interest = total - P;
+
+    $("emiVal").textContent = inr(e);
+    $("principalVal").textContent = inr(P);
+    $("interestVal").textContent = inr(interest);
+    $("totalVal").textContent = inr(total);
+
+    const pPct = (P / total) * 100;
+    $("barP").style.width = pPct + "%";
+    $("barI").style.width = (100 - pPct) + "%";
+
+    drawChart(P, interest);
+  }
+
+  // link number inputs <-> sliders
+  const pairs = [["amount", "amountR"], ["rate", "rateR"], ["years", "yearsR"]];
+  pairs.forEach(([num, rng]) => {
+    $(rng).addEventListener("input", () => { $(num).value = $(rng).value; calc(); });
+    $(num).addEventListener("input", () => { $(rng).value = $(num).value; calc(); });
+  });
+  window.addEventListener("resize", calc);
+
+  calc();
+</script>
+</body>
+</html>
